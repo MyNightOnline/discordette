@@ -4,6 +4,7 @@
   import { api, errMsg } from "../lib/api.ts";
   import ProviderSettings from "../components/ProviderSettings.svelte";
   import { app, notify, setConfig } from "../lib/store.svelte.ts";
+  import icon from "../assets/icon.png";
 
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { check } from "@tauri-apps/plugin-updater";
@@ -75,8 +76,6 @@
     {/each}
     <h2>ธีม</h2>
     <select bind:value={theme} onchange={saveSettings} aria-label="ธีม" style="width:200px"><option value="system">ตามระบบ</option><option value="light">สว่าง</option><option value="dark">มืด</option></select>
-    <h2>อัปเดตแอป</h2>
-    <div class="row"><button disabled={!!busy} onclick={upd}>{busy === "upd" ? "กำลังตรวจสอบ…" : "ตรวจสอบอัปเดต"}</button><span class="hint">เวอร์ชันปัจจุบัน {ver}</span></div>
 
   {:else if app.sec === "discord"}
     <h1>Discord</h1>
@@ -113,6 +112,16 @@
     <p class="hint lead">จัดการ provider ที่ใช้กับแท็บ "AI" ในหน้าโพสต์ (ให้ AI สรุปข้อความเป็นหัวข้อ + รายละเอียด) ตั้งค่าแล้วเลือกใช้ได้ตอนสรุป</p>
     <ProviderSettings />
 
+  {:else if app.sec === "about"}
+    <h1>เกี่ยวกับ</h1>
+    <div class="row"><img class="logo" src={icon} alt="" draggable="false" /><div><b>Discordette</b><div class="hint">เวอร์ชัน {ver}</div></div></div>
+    <div class="row"><button class="primary" disabled={!!busy} onclick={upd}>{busy === "upd" ? "กำลังตรวจสอบ…" : "ตรวจสอบอัปเดต"}</button></div>
+    <div class="row">
+      <button class="ghost lnk" onclick={() => openUrl("https://github.com/MyNightOnline/discordette")}>GitHub</button>
+      <button class="ghost lnk" onclick={() => openUrl("https://github.com/MyNightOnline/discordette/releases")}>Releases</button>
+    </div>
+    <p class="hint">ใบอนุญาต MIT</p>
+
   {:else}
     <h1>Prompt template</h1>
     <textarea rows="14" class="mono" bind:value={prompt} aria-label="prompt template"></textarea>
@@ -130,5 +139,6 @@
   .tk { position: relative; flex: 1; }
   .tk input { width: 100%; padding-right: 40px; }
   .row .eye { position: absolute; right: 3px; top: 50%; translate: 0 -50%; width: 30px; height: 30px; padding: 0; display: grid; place-items: center; color: var(--muted); }
+  .logo { width: 56px; height: 56px; border-radius: 12px; }
   .lead { margin: -8px 0 20px; font-size: 13px; }
 </style>

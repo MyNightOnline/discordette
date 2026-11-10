@@ -58,6 +58,7 @@
   const SECS: { grp: string; items: [Sec, string][] }[] = [
     { grp: "พื้นฐาน", items: [["general", "ทั่วไป"], ["discord", "Discord"], ["data", "นำเข้า / ส่งออก"]] },
     { grp: "AI", items: [["ai", "AI provider"], ["prompt", "Prompt template"]] },
+    { grp: "ข้อมูล", items: [["about", "เกี่ยวกับ"]] },
   ];
 </script>
 

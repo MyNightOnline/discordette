@@ -2,7 +2,7 @@ import { api, errMsg, type Config, type FolderFile, type Room } from "./api.ts";
 import { len, MAX_CONTENT, MAX_TAGS, MAX_TITLE, composeText, withSource } from "./limits.ts";
 
 export type View = "compose" | "settings";
-export type Sec = "general" | "discord" | "data" | "ai" | "prompt";
+export type Sec = "general" | "discord" | "data" | "ai" | "prompt" | "about";
 export interface Img { id: number; url: string; size: number; w: number; h: number; shrunk: boolean; original_size: number; name: string; video: boolean; mime: string }
 export interface Slot { key: number; img?: Img; error?: string; name: string }
 
