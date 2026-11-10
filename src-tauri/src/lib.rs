@@ -1,10 +1,12 @@
 mod ai;
 mod config;
+mod err;
 mod discord;
 mod history;
 mod images;
 
 use config::{Config, Room};
+use err::ec;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{ipc::{InvokeBody, Request}, AppHandle, Emitter, State};
@@ -39,13 +41,13 @@ fn save_providers(app: AppHandle, providers: Vec<ai::Provider>) -> R<Config> {
 #[tauri::command]
 async fn ai_summarize(app: AppHandle, state: State<'_, AppState>, provider_id: String, model: String, text: String, extra: String, tags: Vec<String>) -> R<String> {
     let c = config::load(&app)?;
-    let p = c.providers.iter().find(|p| p.id == provider_id && p.enabled).ok_or("ไม่พบ provider ที่เปิดใช้งาน")?;
+    let p = c.providers.iter().find(|p| p.id == provider_id && p.enabled).ok_or_else(|| ec("err.noProvider", &[]))?;
     let user = if extra.trim().is_empty() { text } else { format!("{text}
 
 ---
 คำสั่งเพิ่มเติม: {}", extra.trim()) };
     let out = ai::call(&state.http, p, &model, &ai::system(&tags), &user, 4096).await?;
-    if out.trim().is_empty() { return Err("AI ไม่ตอบข้อความกลับมา".into()); }
+    if out.trim().is_empty() { return Err(ec("err.aiEmpty", &[])); }
     Ok(out)
 }
 
@@ -59,12 +61,12 @@ async fn ai_test(state: State<'_, AppState>, provider: ai::Provider, model: Stri
 #[tauri::command]
 fn save_room(app: AppHandle, mut room: Room, webhook_url: Option<String>) -> R<Config> {
     let mut c = config::load(&app)?;
-    if room.name.trim().is_empty() { return Err("ต้องตั้งชื่อห้อง".into()); }
-    if c.rooms.iter().any(|r| r.name == room.name && r.id != room.id) { return Err("มีห้องชื่อนี้อยู่แล้ว".into()); }
+    if room.name.trim().is_empty() { return Err(ec("err.roomName", &[])); }
+    if c.rooms.iter().any(|r| r.name == room.name && r.id != room.id) { return Err(ec("err.roomDup", &[])); }
     if room.id.is_empty() { room.id = config::new_id(); }
     match webhook_url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(u) => { discord::parse_webhook_url(u)?; config::secret_set(&config::webhook_key(&room.id), u)?; }
-        None if config::secret_get(&config::webhook_key(&room.id)).is_none() => return Err("ต้องใส่ URL webhook".into()),
+        None if config::secret_get(&config::webhook_key(&room.id)).is_none() => return Err(ec("err.webhookReq", &[])),
         None => {}
     }
     match c.rooms.iter_mut().find(|r| r.id == room.id) { Some(r) => *r = room, None => c.rooms.push(room) }
@@ -100,7 +102,7 @@ async fn webhook_info(state: State<'_, AppState>, url: String) -> R<discord::Web
 
 #[tauri::command]
 async fn test_room(state: State<'_, AppState>, room_id: String) -> R<discord::WebhookInfo> {
-    let url = config::secret_get(&config::webhook_key(&room_id)).ok_or("ไม่พบ URL webhook ของห้องนี้")?;
+    let url = config::secret_get(&config::webhook_key(&room_id)).ok_or_else(|| ec("err.noWebhook", &[]))?;
     discord::webhook_info(&state.http, &url).await
 }
 
@@ -117,10 +119,10 @@ fn get_bot_token() -> Option<String> { config::secret_get("bot") }
 
 #[tauri::command]
 async fn fetch_tags(app: AppHandle, state: State<'_, AppState>, room_id: String) -> R<Config> {
-    let token = config::secret_get("bot").ok_or("ยังไม่ได้ตั้ง bot token ในหน้าตั้งค่า")?;
+    let token = config::secret_get("bot").ok_or_else(|| ec("err.noBotToken", &[]))?;
     let mut c = config::load(&app)?;
-    let room = c.rooms.iter_mut().find(|r| r.id == room_id).ok_or("ไม่พบห้อง")?;
-    let ch = room.channel_id.clone().filter(|s| !s.is_empty()).ok_or("ห้องนี้ไม่มี channel id (กดทดสอบก่อน)")?;
+    let room = c.rooms.iter_mut().find(|r| r.id == room_id).ok_or_else(|| ec("err.noRoom", &[]))?;
+    let ch = room.channel_id.clone().filter(|s| !s.is_empty()).ok_or_else(|| ec("err.noChannel", &[]))?;
     let gw = discord::go_online(&token).await;
     let info = discord::fetch_tags(&state.http, &token, &ch).await;
     // ค้างออนไลน์อีกสักพักให้เห็นสถานะ แล้วค่อยตัดการเชื่อมต่อ (ไม่ต้องรอตรงนี้)
@@ -135,11 +137,11 @@ async fn fetch_tags(app: AppHandle, state: State<'_, AppState>, room_id: String)
 #[tauri::command]
 async fn create_tag(app: AppHandle, state: State<'_, AppState>, room_id: String, name: String) -> R<Config> {
     let name: String = name.trim().chars().take(20).collect();
-    if name.is_empty() { return Err("ต้องตั้งชื่อแท็ก".into()); }
-    let token = config::secret_get("bot").ok_or("ยังไม่ได้ตั้ง bot token ในหน้าตั้งค่า")?;
+    if name.is_empty() { return Err(ec("err.tagName", &[])); }
+    let token = config::secret_get("bot").ok_or_else(|| ec("err.noBotToken", &[]))?;
     let mut c = config::load(&app)?;
-    let room = c.rooms.iter_mut().find(|r| r.id == room_id).ok_or("ไม่พบห้อง")?;
-    let ch = room.channel_id.clone().filter(|s| !s.is_empty()).ok_or("ห้องนี้ไม่มี channel id (กดทดสอบก่อน)")?;
+    let room = c.rooms.iter_mut().find(|r| r.id == room_id).ok_or_else(|| ec("err.noRoom", &[]))?;
+    let ch = room.channel_id.clone().filter(|s| !s.is_empty()).ok_or_else(|| ec("err.noChannel", &[]))?;
     let info = discord::create_tag(&state.http, &token, &ch, &name).await?;
     room.tags = info.tags;
     config::save(&app, &c)?;
@@ -150,7 +152,7 @@ async fn create_tag(app: AppHandle, state: State<'_, AppState>, room_id: String,
 /// (async) = รันบน thread pool ไม่ใช่ main thread: ถอดรหัส/ย่อรูปหนักๆ จะไม่ทำให้ UI ค้าง
 #[tauri::command(async)]
 fn stage_image(app: AppHandle, state: State<'_, AppState>, request: Request<'_>) -> R<images::StagedInfo> {
-    let InvokeBody::Raw(raw) = request.body() else { return Err("ไม่ได้รับไฟล์".into()) };
+    let InvokeBody::Raw(raw) = request.body() else { return Err(ec("err.noFile", &[])) };
     let h = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("").to_string();
     let name = percent_decode(&h("name"));
     let mime = match h("mime").as_str() { "" | "application/octet-stream" => "image/png".to_string(), m => m.to_string() };
@@ -172,7 +174,7 @@ fn list_folder(path: String, image: bool, video: bool) -> R<FolderScan> {
     let mut stack = vec![root.clone()];
     while let Some(dir) = stack.pop() {
         let Ok(rd) = std::fs::read_dir(&dir) else {
-            if dir == root { return Err("เปิดโฟลเดอร์ไม่ได้".into()); }
+            if dir == root { return Err(ec("err.openDir", &[])); }
             continue;
         };
         for e in rd.flatten() {
@@ -193,12 +195,12 @@ fn list_folder(path: String, image: bool, video: bool) -> R<FolderScan> {
 #[tauri::command(async)]
 fn stage_path(app: AppHandle, state: State<'_, AppState>, path: String) -> R<images::StagedInfo> {
     let name = std::path::Path::new(&path).file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
-    let (mime, video) = images::ext_mime(&name).ok_or("ชนิดไฟล์ไม่รองรับ")?;
+    let (mime, video) = images::ext_mime(&name).ok_or_else(|| ec("err.badType", &[]))?;
     let cfg = config::load(&app)?;
     let max = if video { cfg.max_video_mb } else { cfg.max_file_mb } * 1_000_000;
-    let len = std::fs::metadata(&path).map_err(|e| format!("อ่านไฟล์ไม่ได้: {e}"))?.len();
-    if video && len > max { return Err(format!("คลิปใหญ่เกิน {} MB และย่อไม่ได้ (เพิ่มเพดานในตั้งค่า)", max / 1_000_000)); }
-    let raw = std::fs::read(&path).map_err(|e| format!("อ่านไฟล์ไม่ได้: {e}"))?;
+    let len = std::fs::metadata(&path).map_err(|x| ec("err.readFile", &[&x]))?.len();
+    if video && len > max { return Err(ec("err.videoBig", &[&(max / 1_000_000)])); }
+    let raw = std::fs::read(&path).map_err(|x| ec("err.readFile", &[&x]))?;
     images::stage(&state.images, raw, &name, &mime, max)
 }
 
@@ -206,7 +208,7 @@ fn stage_path(app: AppHandle, state: State<'_, AppState>, path: String) -> R<ima
 #[tauri::command]
 fn get_staged(state: State<'_, AppState>, id: u64) -> R<tauri::ipc::Response> {
     let m = state.images.map.lock().unwrap();
-    m.get(&id).map(|s| tauri::ipc::Response::new(s.bytes.clone())).ok_or_else(|| "ไม่พบไฟล์ที่แนบ".to_string())
+    m.get(&id).map(|s| tauri::ipc::Response::new(s.bytes.clone())).ok_or_else(|| ec("err.noStaged", &[]))
 }
 
 fn percent_decode(s: &str) -> String {
@@ -238,11 +240,11 @@ async fn send_post(
     tag_ids: Vec<String>, image_ids: Vec<u64>, source_url: String,
 ) -> R<PostResult> {
     let c = config::load(&app)?;
-    let room = c.rooms.iter().find(|r| r.id == room_id).ok_or("ไม่พบห้อง")?;
-    let url = config::secret_get(&config::webhook_key(&room.id)).ok_or("ไม่พบ URL webhook ของห้องนี้")?;
+    let room = c.rooms.iter().find(|r| r.id == room_id).ok_or_else(|| ec("err.noRoom", &[]))?;
+    let url = config::secret_get(&config::webhook_key(&room.id)).ok_or_else(|| ec("err.noWebhook", &[]))?;
     let imgs: Vec<images::Staged> = {
         let m = state.images.map.lock().unwrap();
-        image_ids.iter().map(|id| m.get(id).map(|s| images::Staged { name: s.name.clone(), mime: s.mime.clone(), bytes: s.bytes.clone() }).ok_or("รูปหายไปแล้ว ลองเพิ่มใหม่"))
+        image_ids.iter().map(|id| m.get(id).map(|s| images::Staged { name: s.name.clone(), mime: s.mime.clone(), bytes: s.bytes.clone() }).ok_or_else(|| ec("err.imgLost", &[])))
             .collect::<Result<_, _>>()?
     };
     let forum = room.kind == "forum";
@@ -250,8 +252,8 @@ async fn send_post(
     discord::validate(forum, &title, &content, tag_ids.len(), forum && room.require_tag, &sizes, u64::MAX)?;
     // เพดานแยกรูป/คลิป (เผื่อผู้ใช้ลดเพดานในตั้งค่าหลังแนบไฟล์ไปแล้ว)
     for (i, im) in imgs.iter().enumerate() {
-        let (kind, mb) = if images::is_video(&im.name, &im.mime) { ("คลิป", c.max_video_mb) } else { ("รูป", c.max_file_mb) };
-        if im.bytes.len() as u64 > mb * 1_000_000 { return Err(format!("{kind}ที่ {} ({}) ใหญ่เกินเพดาน {mb} MB ที่ตั้งไว้", i + 1, im.name)); }
+        let (video, mb) = if images::is_video(&im.name, &im.mime) { (true, c.max_video_mb) } else { (false, c.max_file_mb) };
+        if im.bytes.len() as u64 > mb * 1_000_000 { return Err(ec(if video { "err.overVideo" } else { "err.overImage" }, &[&(i + 1), &im.name, &mb])); }
     }
     state.cancel.store(false, Ordering::Relaxed);
     let total = imgs.len();

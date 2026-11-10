@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ask } from "@tauri-apps/plugin-dialog";
   import { api, errMsg, type Provider } from "../lib/api.ts";
+  import { locale, t } from "../lib/i18n.svelte.ts";
   import { app, notify, setConfig } from "../lib/store.svelte.ts";
 
   const clone = () => $state.snapshot(app.config.providers) as Provider[];
@@ -10,7 +11,7 @@
   const cur = $derived(list.find((p) => p.id === sel));
   const ready = (p: Provider) => p.enabled && !!p.api_key.trim() && p.models.some((m) => m.enabled);
   const touch = () => (dirty = true);
-  const sub = (p: Provider) => !p.enabled ? "ปิดใช้งาน" : !p.api_key.trim() ? "ยังไม่ใส่ API key" : !p.models.some((m) => m.enabled) ? "ยังไม่มีโมเดล" : `${p.models.filter((m) => m.enabled).length} โมเดล`;
+  const sub = (p: Provider) => !p.enabled ? t("prov.disabled") : !p.api_key.trim() ? t("prov.noKey") : !p.models.some((m) => m.enabled) ? t("prov.noModels") : t("prov.nModels", { n: p.models.filter((m) => m.enabled).length });
 
   const uid = () => "p" + Date.now().toString(36);
   const PRESET: Provider = {
@@ -25,18 +26,18 @@
   }
   const pick = (id: string) => { sel = id; adding = false; showKey = false; };
   async function remove() {
-    if (!cur || !(await ask(`ลบ provider "${cur.name}"?`, { kind: "warning" }))) return;
+    if (!cur || !(await ask(t("prov.delConfirm", { name: cur.name }), { kind: "warning" }))) return;
     list = list.filter((p) => p !== cur); sel = list[0]?.id ?? ""; touch();
   }
   const save = async () => {
     busy = "save";
-    try { setConfig(await api.saveProviders($state.snapshot(list) as Provider[])); dirty = false; notify("บันทึก provider แล้ว"); }
+    try { setConfig(await api.saveProviders($state.snapshot(list) as Provider[])); dirty = false; notify(t("prov.saved")); }
     catch (e) { notify(errMsg(e), undefined, true); } finally { busy = ""; }
   };
   async function test(model: string) {
     if (!cur) return;
     busy = "test:" + model;
-    try { await api.aiTest($state.snapshot(cur) as Provider, model); notify(`เชื่อมต่อ ${model} ได้`); }
+    try { await api.aiTest($state.snapshot(cur) as Provider, model); notify(t("prov.connected", { model })); }
     catch (e) { notify(errMsg(e), undefined, true); } finally { busy = ""; }
   }
 </script>
@@ -54,28 +55,28 @@
 {/snippet}
 
 <div class="ps">
-  <nav aria-label="รายการ provider">
-    <div class="cap">ผู้ให้บริการ</div>
+  <nav aria-label={t("prov.listAria")}>
+    <div class="cap">{t("prov.cap")}</div>
     {#each list as p (p.id)}
       <button class="item" class:on={p.id === sel && !adding} aria-current={p.id === sel && !adding} onclick={() => pick(p.id)}>
         <i class="dot" class:ok={ready(p)} aria-hidden="true"></i>
         <span class="it"><b>{p.name}</b><span class:warn={!ready(p)}>{sub(p)}</span></span>
       </button>
     {/each}
-    <button class="item add" class:on={adding} onclick={() => (adding = !adding)}>{@render ico('<path d="M12 5v14M5 12h14"/>')}เพิ่ม provider</button>
+    <button class="item add" class:on={adding} onclick={() => (adding = !adding)}>{@render ico('<path d="M12 5v14M5 12h14"/>')}{t("prov.add")}</button>
   </nav>
 
   <section>
     {#if adding}
-      <div class="head"><button class="ib" aria-label="กลับ" onclick={() => (adding = false)}>{@render ico('<path d="m15 6-6 6 6 6"/>')}</button><h3>เพิ่ม provider</h3></div>
+      <div class="head"><button class="ib" aria-label={t("prov.back")} onclick={() => (adding = false)}>{@render ico('<path d="m15 6-6 6 6 6"/>')}</button><h3>{t("prov.add")}</h3></div>
       <div class="choices">
-        {@render pcard("Z.ai Coding Plan", "ใส่ URL และโมเดลให้แล้ว กรอกแค่ API key", '<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>', () => add(true))}
-        {@render pcard("Custom provider", "กำหนด Base URL, format และโมเดลเอง", '<path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M12 12 4 7.5M12 12l8-4.5M12 12v9"/>', () => add(false))}
+        {@render pcard("Z.ai Coding Plan", t("prov.zaiText"), '<path d="M13 3 5 14h6l-1 7 8-11h-6z"/>', () => add(true))}
+        {@render pcard("Custom provider", t("prov.customText"), '<path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M12 12 4 7.5M12 12l8-4.5M12 12v9"/>', () => add(false))}
       </div>
     {:else if cur}
       <div class="head">
-        <input class="name" bind:value={cur.name} oninput={touch} aria-label="ชื่อ provider" />
-        <label class="sw-l">เปิดใช้งาน<input type="checkbox" role="switch" class="sw" bind:checked={cur.enabled} onchange={touch} /></label>
+        <input class="name" bind:value={cur.name} oninput={touch} aria-label={t("prov.nameAria")} />
+        <label class="sw-l">{t("prov.enable")}<input type="checkbox" role="switch" class="sw" bind:checked={cur.enabled} onchange={touch} /></label>
       </div>
 
       <label class="f"><span class="lbl">Base URL</span><input bind:value={cur.base_url} oninput={touch} placeholder="https://api.example.com/v1" spellcheck="false" /></label>
@@ -85,38 +86,38 @@
           <option value="chat">Chat completions (/chat/completions)</option>
         </select></label>
       <div class="f"><label class="lbl" for="ak">API key</label>
-        <div class="key"><input id="ak" type={showKey ? "text" : "password"} bind:value={cur.api_key} oninput={touch} placeholder="วาง API key ที่นี่" autocomplete="off" spellcheck="false" />
-          <button class="ib" aria-label={showKey ? "ซ่อน API key" : "แสดง API key"} aria-pressed={showKey} onclick={() => (showKey = !showKey)}>
+        <div class="key"><input id="ak" type={showKey ? "text" : "password"} bind:value={cur.api_key} oninput={touch} placeholder={t("prov.keyPh")} autocomplete="off" spellcheck="false" />
+          <button class="ib" aria-label={showKey ? t("prov.hideKey") : t("prov.showKey")} aria-pressed={showKey} onclick={() => (showKey = !showKey)}>
             {#if showKey}{@render ico('<path d="M3 3l18 18M10.6 6.2A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a16 16 0 0 1-3 3.5M6.6 7.6C4 9.3 2.5 12 2.5 12S6 18 12 18c1.4 0 2.7-.3 3.8-.8M9.9 9.9a3 3 0 0 0 4.2 4.2"/>')}
             {:else}{@render ico('<path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="3"/>')}{/if}
           </button></div></div>
 
-      <div class="mh"><span class="lbl" style="margin:0">โมเดล</span>
-        <button class="sm" onclick={() => { cur.models.push({ id: "", vision: false, enabled: true }); touch(); }}>{@render ico('<path d="M12 5v14M5 12h14"/>')}เพิ่มโมเดล</button></div>
+      <div class="mh"><span class="lbl" style="margin:0">{t("prov.models")}</span>
+        <button class="sm" onclick={() => { cur.models.push({ id: "", vision: false, enabled: true }); touch(); }}>{@render ico('<path d="M12 5v14M5 12h14"/>')}{t("prov.addModel")}</button></div>
       <ul class="models">
         {#each cur.models as m, i}
           <li>
-            <input class="mono mid" bind:value={m.id} oninput={touch} placeholder="ชื่อโมเดล เช่น glm-5.3" aria-label="ชื่อโมเดล" spellcheck="false" />
+            <input class="mono mid" bind:value={m.id} oninput={touch} placeholder={t("prov.modelPh")} aria-label={t("prov.modelAria")} spellcheck="false" />
             <span class="act">
               {#if m.ctx}<span class="badge">{m.ctx}</span>{/if}{#if m.vision}<span class="badge">Vision</span>{/if}
-              <button class="sm" disabled={!!busy || !m.id.trim()} onclick={() => test(m.id)}>{busy === "test:" + m.id ? "กำลังทดสอบ…" : "ทดสอบ"}</button>
-              <input type="checkbox" role="switch" class="sw" bind:checked={m.enabled} onchange={touch} aria-label="เปิดใช้งาน {m.id}" />
-              <button class="ib" aria-label="ลบโมเดล {m.id}" onclick={() => { cur.models.splice(i, 1); touch(); }}>{@render ico('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>')}</button>
+              <button class="sm" disabled={!!busy || !m.id.trim()} onclick={() => test(m.id)}>{busy === "test:" + m.id ? t("common.testing") : t("common.test")}</button>
+              <input type="checkbox" role="switch" class="sw" bind:checked={m.enabled} onchange={touch} aria-label={t("prov.enableModel", { id: m.id })} />
+              <button class="ib" aria-label={t("prov.delModel", { id: m.id })} onclick={() => { cur.models.splice(i, 1); touch(); }}>{@render ico('<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>')}</button>
             </span>
           </li>
-        {:else}<li class="none">ยังไม่มีโมเดล · กด "เพิ่มโมเดล" เพื่อใช้ในแท็บ AI</li>{/each}
+        {:else}<li class="none">{t("prov.noneModels")}</li>{/each}
       </ul>
 
       <div class="foot">
-        <button class="danger" onclick={remove}>ลบ provider</button>
-        <span class="hint" style="margin-left:auto">{dirty ? "มีการเปลี่ยนแปลงที่ยังไม่บันทึก" : ""}</span>
-        <button class="primary" disabled={!dirty || !!busy} onclick={save}>บันทึก</button>
+        <button class="danger" onclick={remove}>{t("prov.delete")}</button>
+        <span class="hint" style="margin-left:auto">{dirty ? t("prov.dirty") : ""}</span>
+        <button class="primary" disabled={!dirty || !!busy} onclick={save}>{t("common.save")}</button>
       </div>
-      <p class="hint note">API key เก็บในไฟล์ตั้งค่าของโปรแกรมแบบข้อความธรรมดา และไม่ถูกรวมในไฟล์ส่งออก</p>
+      <p class="hint note">{t("prov.keyNote")}</p>
     {:else}
-      <div class="empty">ยังไม่มี provider<br /><button class="primary" style="margin-top:12px" onclick={() => (adding = true)}>เพิ่ม provider</button></div>
+      <div class="empty">{t("prov.empty")}<br /><button class="primary" style="margin-top:12px" onclick={() => (adding = true)}>{t("prov.add")}</button></div>
     {/if}
-    {#if dirty && !cur && !adding}<div class="foot"><button class="primary" onclick={save}>บันทึก</button></div>{/if}
+    {#if dirty && !cur && !adding}<div class="foot"><button class="primary" onclick={save}>{t("common.save")}</button></div>{/if}
   </section>
 </div>
 

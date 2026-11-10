@@ -2,6 +2,7 @@
   import type { Room } from "../lib/api.ts";
   import { MAX_TAGS } from "../lib/limits.ts";
   import { api, errMsg } from "../lib/api.ts";
+  import { locale, t } from "../lib/i18n.svelte.ts";
   import { app, draft, editor, notify, setConfig } from "../lib/store.svelte.ts";
   import Counter from "./Counter.svelte";
   let { room, onchange }: { room: Room; onchange: () => void } = $props();
@@ -11,7 +12,7 @@
   async function pull() {
     if (!app.hasBot || !room.channel_id) { editor.room = room; editor.open = true; return; }
     busy = true;
-    try { setConfig(await api.fetchTags(room.id)); notify("ดึงแท็กแล้ว"); } catch (e) { notify(errMsg(e), undefined, true); } finally { busy = false; }
+    try { setConfig(await api.fetchTags(room.id)); notify(t("tags.pulled")); } catch (e) { notify(errMsg(e), undefined, true); } finally { busy = false; }
   }
 
   // สร้างแท็กใหม่ใน Discord (ต้องให้บอทมีสิทธิ์ Manage Channels) แล้วเลือกให้เลย
@@ -24,10 +25,10 @@
     try {
       const c = await api.createTag(room.id, n);
       setConfig(c);
-      const t = c.rooms.find((r) => r.id === room.id)?.tags.find((t) => t.name.toLowerCase() === n.toLowerCase());
-      if (t && !draft.tagIds.includes(t.id) && draft.tagIds.length < MAX_TAGS) draft.tagIds.push(t.id);
+      const tag = c.rooms.find((r) => r.id === room.id)?.tags.find((x) => x.name.toLowerCase() === n.toLowerCase());
+      if (tag && !draft.tagIds.includes(tag.id) && draft.tagIds.length < MAX_TAGS) draft.tagIds.push(tag.id);
       draft.suggest = draft.suggest.filter((x) => x.toLowerCase() !== n.toLowerCase());
-      name = ""; onchange(); notify(`สร้างแท็ก "${n}" แล้ว`);
+      name = ""; onchange(); notify(t("tags.created", { n }));
     } catch (e) { notify(errMsg(e), undefined, true); } finally { creating = false; }
   }
 
@@ -41,7 +42,7 @@
 
 <div class="f" id="f-tags">
   <div class="lbl">
-    <span>แท็ก {#if room.require_tag}<span class="req">ต้องเลือก</span>{/if}</span>
+    <span>{t("tags.label")} {#if room.require_tag}<span class="req">{t("tags.required")}</span>{/if}</span>
     <Counter n={draft.tagIds.length} max={MAX_TAGS} />
   </div>
   {#if room.tags.length}
@@ -54,15 +55,15 @@
       {/each}
     </div>
   {:else}
-    <p class="hint">ยังไม่มีแท็กของห้องนี้ — <button class="ghost link" disabled={busy} onclick={pull}>{busy ? "กำลังดึง…" : "ดึงแท็ก"}</button></p>
+    <p class="hint">{t("tags.none")}<button class="ghost link" disabled={busy} onclick={pull}>{busy ? t("tags.pulling") : t("tags.pull")}</button></p>
   {/if}
   {#if canCreate}
     <div class="row wrap new">
       {#each draft.suggest as n (n)}
-        <button class="chip sug" disabled={creating} title="AI เสนอแท็กนี้ แต่ห้องยังไม่มี · กดเพื่อสร้างใน Discord" onclick={() => create(n)}>＋ สร้าง "{n}"</button>
+        <button class="chip sug" disabled={creating} title={t("tags.suggestTitle")} onclick={() => create(n)}>{t("tags.create", { n })}</button>
       {/each}
-      <input class="nt" bind:value={name} maxlength="20" placeholder="สร้างแท็กใหม่…" aria-label="ชื่อแท็กใหม่" onkeydown={(e) => e.key === "Enter" && create(name)} />
-      <button disabled={creating || !name.trim()} onclick={() => create(name)}>{creating ? "กำลังสร้าง…" : "สร้าง"}</button>
+      <input class="nt" bind:value={name} maxlength="20" placeholder={t("tags.newPh")} aria-label={t("tags.newAria")} onkeydown={(e) => e.key === "Enter" && create(name)} />
+      <button disabled={creating || !name.trim()} onclick={() => create(name)}>{creating ? t("tags.creating") : t("tags.createBtn")}</button>
     </div>
   {/if}
 </div>

@@ -23,7 +23,7 @@ test("fenced and bare JSON, unknown tags dropped, bad room falls back", () => {
 
 test("bad JSON reports an error with line", () => {
   const r = parseClaude('{\n"a": 1,\n"b": }', rooms, "a");
-  assert.ok(!r.ok && r.error.includes("บรรทัด"));
+  assert.ok(!r.ok && r.error.includes("line"));
 });
 
 test("markdown escapes html", () => {

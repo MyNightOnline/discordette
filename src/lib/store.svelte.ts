@@ -1,4 +1,5 @@
 import { api, errMsg, type Config, type FolderFile, type Room } from "./api.ts";
+import { t } from "./i18n.svelte.ts";
 import { len, MAX_CONTENT, MAX_TAGS, MAX_TITLE, composeText, withSource } from "./limits.ts";
 
 export type View = "compose" | "settings";
@@ -70,22 +71,22 @@ export async function clearDraft() {
 /** รายการสิ่งที่ยังขาด/ผิด — field ใช้เลื่อนไปที่ช่องนั้น */
 export function problems(): { field: string; msg: string }[] {
   const r = room(), p: { field: string; msg: string }[] = [];
-  if (!r) return [{ field: "room", msg: "ยังไม่ได้เลือกห้อง" }];
-  const forum = r.kind === "forum", t = len(draft.title.trim()), full = withSource(draft.content, draft.source), c = len(full);
+  if (!r) return [{ field: "room", msg: t("prob.noRoom") }];
+  const forum = r.kind === "forum", tl = len(draft.title.trim()), full = withSource(draft.content, draft.source), c = len(full);
   const imgs = draft.slots.filter((s) => s.img);
   if (forum) {
-    if (t < 1 || t > MAX_TITLE) p.push({ field: "title", msg: t ? `หัวข้อยาวเกิน ${MAX_TITLE}` : "ยังไม่มีหัวข้อ" });
-    if (c > MAX_CONTENT) p.push({ field: "content", msg: `รายละเอียดยาวเกิน ${MAX_CONTENT}` });
-    if (!c && !imgs.length) p.push({ field: "content", msg: "ต้องมีรายละเอียดหรือรูป" });
-    if (r.require_tag && !draft.tagIds.length) p.push({ field: "tags", msg: "ต้องเลือกแท็กอย่างน้อย 1" });
-    if (draft.tagIds.length > MAX_TAGS) p.push({ field: "tags", msg: `แท็กได้ไม่เกิน ${MAX_TAGS}` });
+    if (tl < 1 || tl > MAX_TITLE) p.push({ field: "title", msg: tl ? t("prob.titleLong", { max: MAX_TITLE }) : t("prob.noTitle") });
+    if (c > MAX_CONTENT) p.push({ field: "content", msg: t("prob.contentLong", { max: MAX_CONTENT }) });
+    if (!c && !imgs.length) p.push({ field: "content", msg: t("prob.needContent") });
+    if (r.require_tag && !draft.tagIds.length) p.push({ field: "tags", msg: t("prob.needTag") });
+    if (draft.tagIds.length > MAX_TAGS) p.push({ field: "tags", msg: t("prob.tagsMax", { max: MAX_TAGS }) });
   } else {
     const total = len(composeText(draft.title, full));
-    if (total > MAX_CONTENT) p.push({ field: "content", msg: `ข้อความรวมหัวข้อยาวเกิน ${MAX_CONTENT}` });
-    if (!total && !imgs.length) p.push({ field: "content", msg: "ยังไม่มีเนื้อหา" });
+    if (total > MAX_CONTENT) p.push({ field: "content", msg: t("prob.totalLong", { max: MAX_CONTENT }) });
+    if (!total && !imgs.length) p.push({ field: "content", msg: t("prob.noBody") });
   }
   const failed = draft.slots.flatMap((s, i) => (s.error ? [i + 1] : []));
-  if (failed.length) p.push({ field: "images", msg: `รูปที่ ${failed.join(", ")} แนบไม่สำเร็จ (ลบออกหรือลองใหม่)` });
+  if (failed.length) p.push({ field: "images", msg: t("prob.imgFailed", { list: failed.join(", ") }) });
   return p;
 }
 
@@ -114,8 +115,8 @@ export const wanted = (f: File) => (media.image && isImage(f)) || (media.video &
 /** เพิ่มไฟล์: วางช่อง skeleton ก่อนแล้วค่อยเติมเมื่อ Rust ประมวลผลเสร็จ */
 export async function addFiles(files: File[]) {
   const imgs = files.filter(wanted);
-  if (!imgs.length) { notify(`ไม่พบไฟล์${media.image ? "รูป" : ""}${media.image && media.video ? "หรือ" : ""}${media.video ? "คลิป" : ""}ที่เลือกไว้`, undefined, true); return; }
-  if (imgs.length < files.length) notify(`ข้ามไฟล์ที่ไม่ตรงกับที่เลือก ${files.length - imgs.length} ไฟล์`, undefined, true);
+  if (!imgs.length) { notify(t("media.noneFound", { kinds: `${media.image ? t("media.kImage") : ""}${media.image && media.video ? t("media.kOr") : ""}${media.video ? t("media.kVideo") : ""}` }), undefined, true); return; }
+  if (imgs.length < files.length) notify(t("media.skipped", { n: files.length - imgs.length }), undefined, true);
   // วางช่องทั้งหมดก่อน (เรียงตามลำดับเดิม) แล้วประมวลผลทีละ 4 ไฟล์ ไม่โหลดเข้าหน่วยความจำพร้อมกันหมด
   const jobs = imgs.map((f) => {
     draft.slots.push({ key: newKey(), name: f.name || "image" });

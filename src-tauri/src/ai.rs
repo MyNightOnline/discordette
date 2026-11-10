@@ -1,3 +1,4 @@
+use crate::err::ec;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -40,8 +41,8 @@ pub fn system(tags: &[String]) -> String {
 /// ยิงข้อความเดียวไปหา provider แล้วคืนข้อความตอบ (รวมเฉพาะส่วน text)
 pub async fn call(http: &reqwest::Client, p: &Provider, model: &str, system: &str, user: &str, max_tokens: u32) -> Result<String, String> {
     let base = p.base_url.trim().trim_end_matches('/');
-    if base.is_empty() { return Err("ยังไม่ได้ใส่ Base URL".into()); }
-    if model.trim().is_empty() { return Err("ยังไม่ได้เลือกโมเดล".into()); }
+    if base.is_empty() { return Err(ec("err.noBase", &[])); }
+    if model.trim().is_empty() { return Err(ec("err.noModel", &[])); }
     let anthropic = p.format == "anthropic";
     let req = if anthropic {
         let base = base.strip_suffix("/v1").unwrap_or(base);
@@ -52,11 +53,11 @@ pub async fn call(http: &reqwest::Client, p: &Provider, model: &str, system: &st
         let r = if p.api_key.trim().is_empty() { r } else { r.bearer_auth(p.api_key.trim()) };
         r.json(&json!({ "model": model, "max_tokens": max_tokens, "messages": [{ "role": "system", "content": system }, { "role": "user", "content": user }] }))
     };
-    let res = req.send().await.map_err(|e| format!("เชื่อมต่อ AI ไม่ได้: {e}"))?;
+    let res = req.send().await.map_err(|x| ec("err.aiConnect", &[&x]))?;
     let status = res.status();
     let body = res.text().await.map_err(|e| e.to_string())?;
-    if !status.is_success() { return Err(format!("AI ตอบกลับ {status}: {}", body.chars().take(300).collect::<String>())); }
-    let v: Value = serde_json::from_str(&body).map_err(|_| "อ่านคำตอบของ AI ไม่ได้ (ตรวจ Base URL และ API format)".to_string())?;
+    if !status.is_success() { return Err(ec("err.aiStatus", &[&status, &body.chars().take(300).collect::<String>()])); }
+    let v: Value = serde_json::from_str(&body).map_err(|_| ec("err.aiParse", &[]))?;
     Ok(if anthropic {
         v["content"].as_array().map(|a| a.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("")).unwrap_or_default()
     } else {

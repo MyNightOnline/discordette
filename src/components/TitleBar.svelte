@@ -1,17 +1,18 @@
 <script lang="ts">
+  import { t } from "../lib/i18n.svelte.ts";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   const win = getCurrentWindow();
 </script>
 
 <header data-tauri-drag-region>
   <div class="ctl">
-    <button aria-label="ย่อหน้าต่าง" onclick={() => win.minimize()}>
+    <button aria-label={t("win.min")} onclick={() => win.minimize()}>
       <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" fill="none"><path d="M0 5h10" /></svg>
     </button>
-    <button aria-label="ขยายหน้าต่าง" onclick={() => win.toggleMaximize()}>
+    <button aria-label={t("win.max")} onclick={() => win.toggleMaximize()}>
       <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" fill="none"><rect x=".5" y=".5" width="9" height="9" /></svg>
     </button>
-    <button class="close" aria-label="ปิดหน้าต่าง" onclick={() => win.close()}>
+    <button class="close" aria-label={t("win.close")} onclick={() => win.close()}>
       <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" fill="none"><path d="M0 0l10 10M10 0L0 10" /></svg>
     </button>
   </div>

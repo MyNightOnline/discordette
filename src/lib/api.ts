@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { errText } from "./i18n.svelte.ts";
 
 export interface Tag { id: string; name: string; emoji?: string | null }
 export interface Room { id: string; name: string; kind: "forum" | "text"; channel_id?: string | null; guild_id?: string | null; tags: Tag[]; require_tag: boolean }
@@ -44,4 +45,4 @@ export const api = {
   importConfig: (path: string, replace: boolean) => invoke<{ added: number; replaced: number; skipped: number }>("import_config", { path, replace }),
 };
 
-export const errMsg = (e: unknown) => (typeof e === "string" ? e : (e as Error)?.message ?? String(e));
+export const errMsg = (e: unknown) => errText(typeof e === "string" ? e : (e as Error)?.message ?? String(e));

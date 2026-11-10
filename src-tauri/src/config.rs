@@ -1,3 +1,4 @@
+use crate::err::ec;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 use tauri::Manager;
@@ -44,7 +45,7 @@ pub fn dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 pub fn load(app: &tauri::AppHandle) -> Result<Config, String> {
     match std::fs::read_to_string(dir(app)?.join("config.json")) {
-        Ok(s) => serde_json::from_str(&s).map_err(|e| format!("config.json เสีย: {e}")),
+        Ok(s) => serde_json::from_str(&s).map_err(|x| ec("err.configBroken", &[&x])),
         Err(_) => Ok(Config::default()),
     }
 }
@@ -59,7 +60,7 @@ fn entry(key: &str) -> Result<keyring::Entry, String> {
 }
 pub fn secret_get(key: &str) -> Option<String> { entry(key).ok()?.get_password().ok() }
 pub fn secret_set(key: &str, v: &str) -> Result<(), String> {
-    entry(key)?.set_password(v).map_err(|e| format!("บันทึกลง keyring ไม่ได้: {e}"))
+    entry(key)?.set_password(v).map_err(|x| ec("err.keyring", &[&x]))
 }
 pub fn secret_del(key: &str) { if let Ok(e) = entry(key) { let _ = e.delete_credential(); } }
 pub fn webhook_key(room_id: &str) -> String { format!("webhook:{room_id}") }
@@ -82,7 +83,7 @@ pub fn export(app: &tauri::AppHandle, path: &str) -> Result<(), String> {
 
 pub fn read_export(path: &str) -> Result<Export, String> {
     let s = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&s).map_err(|_| "ไฟล์นี้ไม่ใช่ไฟล์ตั้งค่าของโปรแกรม".to_string())
+    serde_json::from_str(&s).map_err(|_| ec("err.notConfig", &[]))
 }
 
 pub fn conflicts(app: &tauri::AppHandle, path: &str) -> Result<Vec<String>, String> {

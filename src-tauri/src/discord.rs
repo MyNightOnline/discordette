@@ -1,3 +1,4 @@
+use crate::err::ec;
 use crate::config::Tag;
 use crate::images::Staged;
 use serde::{Deserialize, Serialize};
@@ -13,7 +14,7 @@ const HOSTS: [&str; 4] = ["discord.com", "discordapp.com", "ptb.discord.com", "c
 
 /// รับเฉพาะ https://{host}/api/webhooks/{id}/{token}
 pub fn parse_webhook_url(url: &str) -> Result<(String, String), String> {
-    let bad = || "URL webhook ไม่ถูกต้อง (ต้องเป็น https://discord.com/api/webhooks/…)".to_string();
+    let bad = || ec("err.badWebhook", &[]);
     let rest = url.trim().strip_prefix("https://").ok_or_else(bad)?;
     let mut it = rest.splitn(5, '/');
     let (host, api, hooks) = (it.next(), it.next(), it.next());
@@ -40,18 +41,18 @@ pub fn validate(
 ) -> Result<(), String> {
     let (t, c) = (title.trim().chars().count(), content.chars().count());
     if forum {
-        if t == 0 || t > MAX_TITLE { return Err(format!("หัวข้อต้องยาว 1–{MAX_TITLE} ตัวอักษร (ตอนนี้ {t})")); }
-        if c > MAX_CONTENT { return Err(format!("รายละเอียดยาวเกิน {MAX_CONTENT} ตัวอักษร (ตอนนี้ {c})")); }
-        if c == 0 && image_sizes.is_empty() { return Err("ต้องมีรายละเอียดหรือรูปอย่างน้อยอย่างใดอย่างหนึ่ง".into()); }
-        if require_tag && tag_count == 0 { return Err("ห้องนี้ต้องเลือกแท็กอย่างน้อย 1".into()); }
+        if t == 0 || t > MAX_TITLE { return Err(ec("err.titleLen", &[&MAX_TITLE, &t])); }
+        if c > MAX_CONTENT { return Err(ec("err.contentLong", &[&MAX_CONTENT, &c])); }
+        if c == 0 && image_sizes.is_empty() { return Err(ec("err.needBody", &[])); }
+        if require_tag && tag_count == 0 { return Err(ec("err.needTag", &[])); }
     } else {
         let total = compose_text(title, content).chars().count();
-        if total > MAX_CONTENT { return Err(format!("ข้อความรวมหัวข้อยาวเกิน {MAX_CONTENT} ตัวอักษร (ตอนนี้ {total})")); }
-        if total == 0 && image_sizes.is_empty() { return Err("ไม่มีเนื้อหาให้ส่ง".into()); }
+        if total > MAX_CONTENT { return Err(ec("err.totalLong", &[&MAX_CONTENT, &total])); }
+        if total == 0 && image_sizes.is_empty() { return Err(ec("err.nothing", &[])); }
     }
-    if tag_count > MAX_TAGS { return Err(format!("เลือกแท็กได้ไม่เกิน {MAX_TAGS}")); }
+    if tag_count > MAX_TAGS { return Err(ec("err.tagsMax", &[&MAX_TAGS])); }
     if let Some(i) = image_sizes.iter().position(|&s| s > max_bytes) {
-        return Err(format!("รูปที่ {} ใหญ่เกินเพดานที่ตั้งไว้", i + 1));
+        return Err(ec("err.imgOver", &[&(i + 1)]));
     }
     Ok(())
 }
@@ -77,11 +78,11 @@ pub fn map_error(status: u16, body: &Value) -> String {
     let code = body["code"].as_u64().unwrap_or(0);
     let msg = body["message"].as_str().unwrap_or("");
     match (status, code) {
-        (401 | 404, _) | (_, 10015) => "webhook ใช้ไม่ได้หรือถูกลบ".into(),
-        (413, _) | (_, 40005 | 50045) => "มีรูปหรือคลิปใหญ่เกินที่เซิร์ฟเวอร์ Discord รับได้ (ลองลดขนาดไฟล์สูงสุดในตั้งค่า)".into(),
-        (_, 40067) => "ห้องนี้ต้องเลือกแท็กอย่างน้อย 1".into(),
-        (429, _) => "ส่งถี่เกินไป ลองใหม่อีกครั้งในอีกสักครู่".into(),
-        _ => format!("Discord ปฏิเสธคำขอ (HTTP {status}, code {code}): {msg}"),
+        (401 | 404, _) | (_, 10015) => ec("err.webhookGone", &[]),
+        (413, _) | (_, 40005 | 50045) => ec("err.fileTooBig", &[]),
+        (_, 40067) => ec("err.needTag", &[]),
+        (429, _) => ec("err.rateLimit", &[]),
+        _ => ec("err.discordReject", &[&status, &code, &msg]),
     }
 }
 
@@ -89,7 +90,7 @@ pub fn map_error(status: u16, body: &Value) -> String {
 pub struct WebhookInfo { pub name: String, pub channel_id: String, pub guild_id: Option<String>, pub avatar_url: Option<String> }
 
 pub async fn webhook_info(http: &reqwest::Client, url: &str) -> Result<WebhookInfo, String> {
-    let r = http.get(clean_url(url)?).send().await.map_err(|e| format!("เชื่อมต่อ Discord ไม่ได้: {e}"))?;
+    let r = http.get(clean_url(url)?).send().await.map_err(|x| ec("err.discordConnect", &[&x]))?;
     let status = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
     if status != 200 { return Err(map_error(status, &v)); }
@@ -126,11 +127,11 @@ pub struct ChannelTags { pub is_forum: bool, pub require_tag: bool, pub tags: Ve
 pub async fn fetch_tags(http: &reqwest::Client, bot_token: &str, channel_id: &str) -> Result<ChannelTags, String> {
     let r = http.get(format!("https://discord.com/api/v10/channels/{channel_id}"))
         .header("Authorization", format!("Bot {bot_token}"))
-        .send().await.map_err(|e| format!("เชื่อมต่อ Discord ไม่ได้: {e}"))?;
+        .send().await.map_err(|x| ec("err.discordConnect", &[&x]))?;
     let status = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
-    if status == 401 { return Err("bot token ใช้ไม่ได้".into()); }
-    if status == 403 || status == 404 { return Err("บอทมองไม่เห็นห้องนี้ (ต้องเชิญบอทเข้าเซิร์ฟเวอร์และให้สิทธิ์ดูห้อง)".into()); }
+    if status == 401 { return Err(ec("err.botToken", &[])); }
+    if status == 403 || status == 404 { return Err(ec("err.botBlind", &[])); }
     if status != 200 { return Err(map_error(status, &v)); }
     Ok(parse_channel(&v))
 }
@@ -140,15 +141,15 @@ pub async fn create_tag(http: &reqwest::Client, bot_token: &str, channel_id: &st
     let url = format!("https://discord.com/api/v10/channels/{channel_id}");
     let auth = format!("Bot {bot_token}");
     let cur: Value = http.get(&url).header("Authorization", &auth).send().await
-        .map_err(|e| format!("เชื่อมต่อ Discord ไม่ได้: {e}"))?.json().await.unwrap_or(Value::Null);
+        .map_err(|x| ec("err.discordConnect", &[&x]))?.json().await.unwrap_or(Value::Null);
     let mut tags = cur["available_tags"].as_array().cloned().unwrap_or_default();
-    if tags.len() >= 20 { return Err("ห้องนี้มีแท็กครบ 20 แล้ว (ขีดจำกัดของ Discord)".into()); }
+    if tags.len() >= 20 { return Err(ec("err.tags20", &[])); }
     tags.push(serde_json::json!({ "name": name }));
     let r = http.patch(&url).header("Authorization", &auth).json(&serde_json::json!({ "available_tags": tags }))
-        .send().await.map_err(|e| format!("เชื่อมต่อ Discord ไม่ได้: {e}"))?;
+        .send().await.map_err(|x| ec("err.discordConnect", &[&x]))?;
     let status = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
-    if status == 403 { return Err("บอทไม่มีสิทธิ์สร้างแท็ก: ต้องให้สิทธิ์ Manage Channels ในห้องนี้ (ตั้งค่าห้อง → Permissions → บอท)".into()); }
+    if status == 403 { return Err(ec("err.botNoManage", &[])); }
     if status != 200 { return Err(map_error(status, &v)); }
     Ok(parse_channel(&v))
 }
@@ -180,7 +181,7 @@ async fn post_once(http: &reqwest::Client, url: &str, payload: &str, images: &[S
                 .mime_str(&im.mime).map_err(|e| e.to_string())?;
             form = form.part(format!("files[{i}]"), part);
         }
-        let r = http.post(url).multipart(form).send().await.map_err(|e| format!("ส่งไม่สำเร็จ: {e}"))?;
+        let r = http.post(url).multipart(form).send().await.map_err(|x| ec("err.sendFail", &[&x]))?;
         let status = r.status().as_u16();
         let v: Value = r.json().await.unwrap_or(Value::Null);
         if status == 429 && attempt == 0 {
@@ -220,7 +221,7 @@ pub async fn send_post(
     for (n, chunk) in chunks.enumerate() {
         if cancel.load(Ordering::Relaxed) { cancelled = true; break; }
         post_once(http, &rest_url, "{}", chunk).await
-            .map_err(|e| format!("โพสต์แล้ว แต่ส่งไฟล์ชุดที่ {} ไม่สำเร็จ: {e}", n + 2))?;
+            .map_err(|x| ec("err.partFail", &[&(n + 2), &x]))?;
         sent += chunk.len();
         progress(sent);
     }
@@ -275,9 +276,9 @@ mod tests {
 
     #[test]
     fn errors_and_channel() {
-        assert!(map_error(404, &Value::Null).contains("ถูกลบ"));
-        assert!(map_error(400, &json!({"code":40067})).contains("แท็ก"));
-        assert!(map_error(413, &Value::Null).contains("รูป"));
+        assert!(map_error(404, &Value::Null).starts_with("err.webhookGone"));
+        assert!(map_error(400, &json!({"code":40067})).starts_with("err.needTag"));
+        assert!(map_error(413, &Value::Null).starts_with("err.fileTooBig"));
         assert!(map_error(400, &json!({"code":50035,"message":"bad"})).contains("bad"));
         let c = parse_channel(&json!({"type":15,"flags":16,"available_tags":[{"id":"9","name":"LINE","emoji_name":"💬"},{"id":"8","name":"x","emoji_name":null}]}));
         assert!(c.is_forum && c.require_tag && c.tags.len() == 2 && c.tags[0].emoji.as_deref() == Some("💬") && c.tags[1].emoji.is_none());

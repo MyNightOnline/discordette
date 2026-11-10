@@ -2,6 +2,7 @@
   import { composeText, withSource } from "../lib/limits.ts";
   import { md } from "../lib/markdown.ts";
   import { draft, room as currentRoom } from "../lib/store.svelte.ts";
+  import { t } from "../lib/i18n.svelte.ts";
 
   const r = $derived(currentRoom());
   const mode = $derived(r?.kind === "forum" ? "forum" : "message");
@@ -17,17 +18,17 @@
       <div class="fcard">
         <div class="ftext">
           <div class="tags">{#each tags as t}<span class="t">{t.emoji ?? ""} {t.name}</span>{/each}</div>
-          <div class="ft">{draft.title || "หัวข้อโพสต์"}</div>
-          <div class="fc">{@html md(full) || "<span class='dim'>รายละเอียด…</span>"}</div>
+          <div class="ft">{draft.title || t("pv.title")}</div>
+          <div class="fc">{@html md(full) || `<span class='dim'>${t("pv.details")}</span>`}</div>
         </div>
-        {#if imgs[0]}{#if imgs[0].v}<video src={imgs[0].u + "#t=0.1"} muted preload="metadata"></video>{:else}<img src={imgs[0].u} alt="รูปปก" />{/if}{/if}
+        {#if imgs[0]}{#if imgs[0].v}<video src={imgs[0].u + "#t=0.1"} muted preload="metadata"></video>{:else}<img src={imgs[0].u} alt={t("pv.cover")} />{/if}{/if}
       </div>
     {:else}
       <div class="msg">
         <div class="av">{(r?.name ?? "?").slice(0, 1).toUpperCase()}</div>
         <div class="mb">
           <div class="who">{r?.name ?? "webhook"} <span class="bot">BOT</span></div>
-          <div class="mc">{@html md(body) || "<span class='dim'>ข้อความ…</span>"}</div>
+          <div class="mc">{@html md(body) || `<span class='dim'>${t("pv.message")}</span>`}</div>
           {#if imgs.length}
             <div class="ig n{Math.min(imgs.length, 4)}">{#each imgs.slice(0, 10) as m}{#if m.v}<video src={m.u + "#t=0.1"} muted preload="metadata"></video>{:else}<img src={m.u} alt="" decoding="async" />{/if}{/each}</div>
           {/if}

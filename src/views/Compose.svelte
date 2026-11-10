@@ -3,6 +3,7 @@
   import { ask } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { api, errMsg, type Entry } from "../lib/api.ts";
+  import { locale, t } from "../lib/i18n.svelte.ts";
   import { parseAi, parseClaude } from "../lib/jsonImport.ts";
   import { composeText, withSource, len, MAX_CONTENT, MAX_TAGS, MAX_TITLE } from "../lib/limits.ts";
   import { addFiles, app, clearDraft, draft, editor, notify, problems, removeSlot, room as currentRoom, saveDraft } from "../lib/store.svelte.ts";
@@ -68,7 +69,7 @@
   }
   const link = () => {
     const sel = draft.content.slice(ta!.selectionStart, ta!.selectionEnd);
-    wrap("[" + (sel ? "" : "ข้อความ"), "](https://)");
+    wrap("[" + (sel ? "" : t("link.text")), "](https://)");
   };
   function keys(e: KeyboardEvent) {
     const f = e.ctrlKey && { b: () => wrap("**"), i: () => wrap("*"), u: () => wrap("__"), k: link }[e.key.toLowerCase()];
@@ -76,7 +77,7 @@
   }
 
   function applyJson() {
-    const res = parseClaude(json, app.config.rooms, app.roomId);
+    const res = parseClaude(json, app.config.rooms, app.roomId, t);
     if (!res.ok) { jsonErr = res.error; return; }
     const v = res.v;
     jsonErr = ""; warns = v.warnings; lowConf = v.confidence === "low";
@@ -94,13 +95,13 @@
 
   async function runAi() {
     if (!aiSel || aiBusy || !aiText.trim()) return;
-    if ((draft.title.trim() || draft.content.trim()) && !(await ask("หัวข้อและรายละเอียดที่กรอกไว้จะถูกแทนที่ด้วยผลจาก AI ต่อไหม?", { kind: "warning" }))) return;
+    if ((draft.title.trim() || draft.content.trim()) && !(await ask(t("confirm.aiReplace"), { kind: "warning" }))) return;
     const id = Date.now(); aiBusy = id; aiErr = "";
     const [pid, ...m] = aiSel.key.split("|");
     try {
       const raw = await api.aiSummarize(pid, m.join("|"), aiText, aiExtra, forum && r ? r.tags.map((t) => t.name) : []);
       if (aiBusy !== id) return; // ผู้ใช้กดยกเลิกไปแล้ว
-      const res = parseAi(raw);
+      const res = parseAi(raw, t);
       if (!res.ok) { aiErr = res.error; return; }
       draft.title = res.title; draft.content = res.content; clearWarns();
       if (forum && r) { // แท็กที่ตรงกับของห้องใส่ให้เลย · ชื่อที่ยังไม่มีเก็บไว้เป็นข้อเสนอให้กดสร้าง
@@ -122,28 +123,28 @@
   /** ล้างเฉพาะแท็บที่เปิดอยู่: AI / JSON ล้างช่องวางของตัวเอง ส่วน "กรอกเอง" ล้างฟอร์มและรูป */
   async function clear() {
     if (mode === "ai") {
-      if ((aiText.trim() || aiExtra.trim()) && !(await ask("ล้างข้อความต้นฉบับในแท็บ AI?", { kind: "warning" }))) return;
+      if ((aiText.trim() || aiExtra.trim()) && !(await ask(t("confirm.clearAi"), { kind: "warning" }))) return;
       aiBusy = 0; aiText = ""; aiExtra = ""; aiErr = ""; return;
     }
     if (mode === "json") { json = ""; jsonErr = ""; return; }
     const dirty = draft.title || draft.content || draft.source || draft.tagIds.length || draft.slots.length;
-    if (dirty && !(await ask("ล้างทุกช่องและรูปที่แนบ?", { kind: "warning" }))) return;
+    if (dirty && !(await ask(t("confirm.clearAll"), { kind: "warning" }))) return;
     await clearDraft();
   }
 
   async function send() {
     if (sending || !r || probs.length) return;
-    if (dup && !(await ask("โพสต์นี้เคยโพสต์ไปแล้ว ส่งซ้ำไหม?", { kind: "warning" }))) return;
+    if (dup && !(await ask(t("confirm.dup"), { kind: "warning" }))) return;
     const imgs = draft.slots.filter((s) => s.img);
     sending = true; cancelling = false; prog = { sent: 0, total: imgs.length };
     const stop = await listen<{ sent: number }>("send-progress", (e) => (prog.sent = e.payload.sent));
     try {
       const res = await api.sendPost({ roomId: r.id, title: draft.title.trim(), content: withSource(draft.content, draft.source), tagIds: forum ? draft.tagIds : [],
         imageIds: imgs.map((s) => s.img!.id), sourceUrl: draft.source.trim() });
-      if (res.cancelled) { notify(`ยกเลิกการส่งแล้ว (ส่งไปแล้ว ${res.sent}/${imgs.length} ไฟล์ — ที่ส่งแล้วยังอยู่ใน Discord)`, res.link ?? undefined, true); return; }
+      if (res.cancelled) { notify(t("toast.cancelled", { sent: res.sent, total: imgs.length }), res.link ?? undefined, true); return; }
       await clearDraft();
       warns = []; lowConf = false;
-      notify("โพสต์แล้ว", res.link ?? undefined);
+      notify(t("toast.posted"), res.link ?? undefined);
     } catch (e) { notify(errMsg(e), undefined, true); } finally { stop(); sending = false; }
   }
   const cancel = () => { cancelling = true; api.cancelSend().catch(() => {}); };
@@ -152,63 +153,63 @@
 <div class="wrap" class:narrow>
   <div class="cols">
     {#if narrow}
-      <div class="tabs row"><button class:on={tab === "form"} onclick={() => (tab = "form")}>ฟอร์ม</button><button class:on={tab === "preview"} onclick={() => (tab = "preview")}>ตัวอย่าง</button></div>
+      <div class="tabs row"><button class:on={tab === "form"} onclick={() => (tab = "form")}>{t("tab.form")}</button><button class:on={tab === "preview"} onclick={() => (tab = "preview")}>{t("tab.preview")}</button></div>
     {/if}
     {#if !narrow || tab === "form"}
     <div class="form">
       {#if !r}
-        <div class="empty">ยังไม่มีห้อง · <button class="primary" onclick={() => { editor.room = undefined; editor.open = true; }}>+ เพิ่มห้อง</button></div>
+        <div class="empty">{t("empty.noRoom")}<button class="primary" onclick={() => { editor.room = undefined; editor.open = true; }}>{t("empty.add")}</button></div>
       {:else}
-        <div class="room-h">โพสต์ลง <b>#{r.name}</b> · {forum ? "ฟอรั่ม" : "ห้องข้อความ"}</div>
+        <div class="room-h">{t("room.header")} <b>#{r.name}</b> · {forum ? t("room.forum") : t("room.text")}</div>
         <div class="row top">
-          <div class="seg"><button class:on={mode === "manual"} onclick={() => (mode = "manual")}>กรอกเอง</button><button class:on={mode === "json"} onclick={() => (mode = "json")}>วาง JSON</button><button class:on={mode === "ai"} onclick={() => (mode = "ai")}>✨ AI</button></div>
+          <div class="seg"><button class:on={mode === "manual"} onclick={() => (mode = "manual")}>{t("mode.manual")}</button><button class:on={mode === "json"} onclick={() => (mode = "json")}>{t("mode.json")}</button><button class:on={mode === "ai"} onclick={() => (mode = "ai")}>{t("mode.ai")}</button></div>
         </div>
-        {#if lowConf}<div class="banner">AI ไม่แน่ใจ ตรวจก่อนโพสต์</div>{/if}
+        {#if lowConf}<div class="banner">{t("banner.lowConf")}</div>{/if}
         {#each warns as w}<div class="banner">{w}</div>{/each}
 
         {#if mode === "ai"}
           {#if !aiChoices.length}
-            <div class="banner">ยังไม่ได้ตั้ง AI provider (ต้องมี API key และโมเดลที่เปิดใช้งาน) · <button class="ghost lnk" onclick={() => (app.view = "settings")}>ไปที่ตั้งค่า</button></div>
+            <div class="banner">{t("ai.noProvider")}<button class="ghost lnk" onclick={() => (app.view = "settings")}>{t("ai.goSettings")}</button></div>
           {:else}
-            <label class="f"><div class="lbl"><span>โมเดล</span></div>
+            <label class="f"><div class="lbl"><span>{t("ai.model")}</span></div>
               <select value={aiSel?.key} onchange={(e) => { aiPick = e.currentTarget.value; try { localStorage.setItem("ai.pick", aiPick); } catch { /* ไม่เก็บก็ไม่เป็นไร */ } }}>
                 {#each aiChoices as c}<option value={c.key}>{c.label}</option>{/each}</select></label>
-            <label class="f"><div class="lbl"><span>ข้อความต้นฉบับ</span><span class="hint">{len(aiText)} ตัวอักษร</span></div>
-              <textarea rows="9" bind:value={aiText} placeholder="วางบทความ / ข่าว / ข้อความที่อยากให้ AI สรุป"></textarea></label>
-            <label class="f"><div class="lbl"><span>คำสั่งเพิ่มเติม <span class="hint">ไม่บังคับ</span></span></div>
-              <input bind:value={aiExtra} placeholder="เช่น สรุปสั้นๆ 3 บรรทัด น้ำเสียงเป็นกันเอง" /></label>
+            <label class="f"><div class="lbl"><span>{t("ai.source")}</span><span class="hint">{t("ai.chars", { n: len(aiText) })}</span></div>
+              <textarea rows="9" bind:value={aiText} placeholder={t("ai.srcPh")}></textarea></label>
+            <label class="f"><div class="lbl"><span>{t("ai.extra")} <span class="hint">{t("dc.optional")}</span></span></div>
+              <input bind:value={aiExtra} placeholder={t("ai.extraPh")} /></label>
             {#if aiErr}<div class="banner err">{aiErr}</div>{/if}
             <div class="row">
-              {#if aiBusy}<button onclick={() => { aiBusy = 0; }}>ยกเลิก</button><span class="hint">AI กำลังสรุป…</span>
-              {:else}<button class="primary" disabled={!aiText.trim()} onclick={runAi}>✨ สรุปด้วย AI</button>
-                <span class="hint">เติมเฉพาะหัวข้อและรายละเอียด · ลิงก์ แท็ก รูป ยังว่างให้กรอกเอง</span>{/if}
+              {#if aiBusy}<button onclick={() => { aiBusy = 0; }}>{t("ai.cancel")}</button><span class="hint">{t("ai.working")}</span>
+              {:else}<button class="primary" disabled={!aiText.trim()} onclick={runAi}>{t("ai.run")}</button>
+                <span class="hint">{t("ai.runHint")}</span>{/if}
             </div>
           {/if}
         {:else if mode === "json"}
-          <textarea class="mono" rows="10" bind:value={json} placeholder="วาง JSON ที่ AI ตอบ (จะมี ```json ห่อหรือไม่ก็ได้)" spellcheck="false"></textarea>
+          <textarea class="mono" rows="10" bind:value={json} placeholder={t("json.ph")} spellcheck="false"></textarea>
           {#if jsonErr}<div class="banner err" style="margin-top:8px">{jsonErr}</div>{/if}
-          <div style="margin-top:8px"><button class="primary" disabled={!json.trim()} onclick={applyJson}>เติมฟอร์ม</button>
-            <span class="hint">รูปที่วางไว้แล้วจะถูกจัดลำดับตาม "images" ในไฟล์</span></div>
+          <div style="margin-top:8px"><button class="primary" disabled={!json.trim()} onclick={applyJson}>{t("json.fill")}</button>
+            <span class="hint">{t("json.hint")}</span></div>
         {:else}
-          <label class="f" id="f-title"><div class="lbl"><span>หัวข้อ{#if forum} <b class="req" aria-hidden="true">*</b>{/if}</span><Counter n={len(draft.title.trim())} max={MAX_TITLE} /></div>
+          <label class="f" id="f-title"><div class="lbl"><span>{t("f.title")}{#if forum} <b class="req" aria-hidden="true">*</b>{/if}</span><Counter n={len(draft.title.trim())} max={MAX_TITLE} /></div>
             <input class:flash={flash.includes("title")} bind:value={draft.title} oninput={clearWarns} /></label>
-          <div class="f" id="f-content"><div class="lbl"><span>รายละเอียด <b class="req" aria-hidden="true">*</b></span><Counter n={contentLen} max={MAX_CONTENT} /></div>
-            <div class="tb" role="toolbar" aria-label="จัดรูปแบบ">
-              <button aria-label="ตัวหนา (Ctrl+B)" onclick={() => wrap("**")}><b>B</b></button>
-              <button aria-label="ตัวเอียง (Ctrl+I)" onclick={() => wrap("*")}><i>I</i></button>
-              <button aria-label="ขีดเส้นใต้ (Ctrl+U)" onclick={() => wrap("__")}><u>U</u></button>
-              <button aria-label="ขีดทับ" onclick={() => wrap("~~")}><s>S</s></button>
+          <div class="f" id="f-content"><div class="lbl"><span>{t("f.details")} <b class="req" aria-hidden="true">*</b></span><Counter n={contentLen} max={MAX_CONTENT} /></div>
+            <div class="tb" role="toolbar" aria-label={t("tb.aria")}>
+              <button aria-label={t("tb.bold")} onclick={() => wrap("**")}><b>B</b></button>
+              <button aria-label={t("tb.italic")} onclick={() => wrap("*")}><i>I</i></button>
+              <button aria-label={t("tb.underline")} onclick={() => wrap("__")}><u>U</u></button>
+              <button aria-label={t("tb.strike")} onclick={() => wrap("~~")}><s>S</s></button>
               <i class="sep"></i>
-              <button aria-label="อ้างอิง" onclick={quote}>❝</button>
-              <button aria-label="โค้ด" onclick={() => wrap("`")}>&lt;&gt;</button>
-              <button aria-label="ซ่อน (spoiler)" onclick={() => wrap("||")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg></button>
-              <button aria-label="ลิงก์ (Ctrl+K)" onclick={link}>🔗</button>
+              <button aria-label={t("tb.quote")} onclick={quote}>❝</button>
+              <button aria-label={t("tb.code")} onclick={() => wrap("`")}>&lt;&gt;</button>
+              <button aria-label={t("tb.spoiler")} onclick={() => wrap("||")}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" /><circle cx="12" cy="12" r="3" /></svg></button>
+              <button aria-label={t("tb.link")} onclick={link}>🔗</button>
             </div>
             <textarea class:flash={flash.includes("content")} bind:this={ta} bind:value={draft.content} oninput={clearWarns} onkeydown={keys}></textarea></div>
-          <label class="f" id="f-source"><div class="lbl"><span>ลิงก์ต้นทาง</span></div>
+          <label class="f" id="f-source"><div class="lbl"><span>{t("f.source")}</span></div>
             <input class:flash={flash.includes("source")} bind:value={draft.source} oninput={clearWarns} placeholder="https://" /></label>
-          {#if dup}<div class="banner">เคยโพสต์แล้วเมื่อ {new Date(dup.at).toLocaleDateString("th-TH")} ใน #{dup.room_name}
-            {#if dup.link}· <button class="ghost lnk" onclick={() => openUrl(dup!.link!)}>เปิดโพสต์เดิม</button>{/if}</div>{/if}
+          {#if dup}<div class="banner">{t("dup.banner", { date: new Date(dup.at).toLocaleDateString(locale()), room: dup.room_name })}
+            {#if dup.link}· <button class="ghost lnk" onclick={() => openUrl(dup!.link!)}>{t("dup.open")}</button>{/if}</div>{/if}
           {#if forum && r}<div class:flash={flash.includes("tags")}><TagPicker room={r} onchange={saveDraft} /></div>{/if}
           <ImageGrid />
         {/if}
@@ -219,14 +220,14 @@
       {#if mode === "ai" && aiBusy}
         <div class="aip">
           <div class="aic"><div class="sk w1"></div><div class="sk w2"></div></div>
-          <div class="ait"><span class="dots"><i></i><i></i><i></i></span> AI กำลังคิด… <b class="mono">{elapsed.toFixed(1)}s</b></div>
-          <details class="aid"><summary>รายละเอียด request</summary>
+          <div class="ait"><span class="dots"><i></i><i></i><i></i></span> {t("ai.thinking")} <b class="mono">{elapsed.toFixed(1)}s</b></div>
+          <details class="aid"><summary>{t("ai.reqDetails")}</summary>
             <dl>
-              <dt>ผู้ให้บริการ</dt><dd>{aiSel?.label.split(" · ")[0]}</dd>
-              <dt>โมเดล</dt><dd class="mono">{aiSel?.key.split("|").slice(1).join("|")}</dd>
-              <dt>ข้อความต้นฉบับ</dt><dd>{len(aiText)} ตัวอักษร</dd>
-              <dt>คำสั่งเพิ่มเติม</dt><dd>{aiExtra.trim() ? len(aiExtra) + " ตัวอักษร" : "—"}</dd>
-              <dt>สถานะ</dt><dd>{elapsed < 0.5 ? "กำลังส่ง request" : "รอ response"}</dd>
+              <dt>{t("ai.provider")}</dt><dd>{aiSel?.label.split(" · ")[0]}</dd>
+              <dt>{t("ai.model")}</dt><dd class="mono">{aiSel?.key.split("|").slice(1).join("|")}</dd>
+              <dt>{t("ai.source")}</dt><dd>{t("ai.chars", { n: len(aiText) })}</dd>
+              <dt>{t("ai.extra")}</dt><dd>{aiExtra.trim() ? t("ai.chars", { n: len(aiExtra) }) : "—"}</dd>
+              <dt>{t("ai.status")}</dt><dd>{elapsed < 0.5 ? t("ai.sending") : t("ai.waiting")}</dd>
             </dl>
           </details>
         </div>
@@ -240,14 +241,14 @@
           <div class="bar"><i style="width:{(prog.sent / prog.total) * 100}%"></i></div>
           <span class="mono">{prog.sent}/{prog.total}</span>
         </div>
-      {:else if sending}<span class="ready">กำลังส่ง…</span>
-      {:else if !r}{:else if !probs.length}<span class="ready"><i></i>พร้อมโพสต์</span>
+      {:else if sending}<span class="ready">{t("post.sending")}</span>
+      {:else if !r}{:else if !probs.length}<span class="ready"><i></i>{t("post.ready")}</span>
       {:else}{#each probs as p, i}{#if i}, {/if}<button class="ghost lnk" onclick={() => go(p.field)}>{p.msg}</button>{/each}{/if}
     </div>
-    {#if sending}<button disabled={cancelling} onclick={cancel}>{cancelling ? "กำลังยกเลิก…" : "ยกเลิกการส่ง"}</button>
-    {:else}<button onclick={clear}>ล้างฟอร์ม</button>{/if}
+    {#if sending}<button disabled={cancelling} onclick={cancel}>{cancelling ? t("post.cancelling") : t("post.cancel")}</button>
+    {:else}<button onclick={clear}>{t("post.clear")}</button>{/if}
     <button class="primary post" disabled={sending || !r || probs.length > 0} onclick={send}>
-      {sending ? "กำลังส่ง…" : `โพสต์ลง #${r?.name ?? ""}`}</button>
+      {sending ? t("post.sending") : t("post.to", { room: r?.name ?? "" })}</button>
   </footer>
 </div>
 

@@ -1,3 +1,4 @@
+use crate::err::ec;
 use image::{codecs::jpeg::JpegEncoder, imageops::FilterType, DynamicImage, ImageReader};
 use serde::Serialize;
 use std::{collections::HashMap, io::Cursor, sync::Mutex};
@@ -20,7 +21,7 @@ fn encode_jpeg(img: &DynamicImage, q: u8) -> Result<Vec<u8>, String> {
 
 /// ย่อรูปจนไม่เกิน max (ไบต์): ด้านยาว ≤4096 → JPEG q90→60 → ลดขนาดภาพลง 20% ทีละรอบ
 pub fn shrink(bytes: &[u8], max: u64) -> Result<(Vec<u8>, u32, u32), String> {
-    let mut img = image::load_from_memory(bytes).map_err(|e| format!("อ่านรูปไม่ได้: {e}"))?;
+    let mut img = image::load_from_memory(bytes).map_err(|x| ec("err.readImage", &[&x]))?;
     if img.width().max(img.height()) > MAX_SIDE { img = img.resize(MAX_SIDE, MAX_SIDE, FilterType::Triangle); }
     loop {
         for q in [90u8, 80, 70, 60] {
@@ -28,7 +29,7 @@ pub fn shrink(bytes: &[u8], max: u64) -> Result<(Vec<u8>, u32, u32), String> {
             if out.len() as u64 <= max { return Ok((out, img.width(), img.height())); }
         }
         let (w, h) = (img.width() * 4 / 5, img.height() * 4 / 5);
-        if w < 16 || h < 16 { return Err("ย่อรูปให้เล็กพอไม่ได้".into()); }
+        if w < 16 || h < 16 { return Err(ec("err.shrinkFail", &[])); }
         img = img.resize_exact(w, h, FilterType::Triangle);
     }
 }
@@ -61,15 +62,15 @@ pub fn stage(store: &Store, raw: Vec<u8>, name: &str, mime: &str, max: u64) -> R
     let original_size = raw.len() as u64;
     // คลิป: ส่งตามต้นฉบับ ย่อไม่ได้ จึงเช็กเพดานอย่างเดียว
     if let Some(vm) = video_mime(name, mime) {
-        if original_size > max { return Err(format!("คลิปใหญ่เกิน {} MB และย่อไม่ได้ (เพิ่มเพดานในตั้งค่า)", max / 1_000_000)); }
+        if original_size > max { return Err(ec("err.videoBig", &[&(max / 1_000_000)])); }
         let id = put(store, name.to_string(), vm.clone(), raw);
         return Ok(StagedInfo { id, size: original_size, w: 0, h: 0, shrunk: false, original_size, name: name.to_string(), video: true, mime: vm });
     }
     let (w, h) = ImageReader::new(Cursor::new(&raw)).with_guessed_format().ok()
-        .and_then(|r| r.into_dimensions().ok()).ok_or("ไฟล์นี้ไม่ใช่รูปที่รองรับ (jpg, png, webp, gif)")?;
+        .and_then(|r| r.into_dimensions().ok()).ok_or_else(|| ec("err.notImage", &[]))?;
     let (mut bytes, mut name, mut mime, mut shrunk, mut w, mut h) = (raw, name.to_string(), mime.to_string(), false, w, h);
     if original_size > max {
-        if mime == "image/gif" { return Err(format!("GIF ใหญ่เกิน {} MB และย่อไม่ได้ (ภาพเคลื่อนไหวจะหาย)", max / 1_000_000)); }
+        if mime == "image/gif" { return Err(ec("err.gifBig", &[&(max / 1_000_000)])); }
         let (b, nw, nh) = shrink(&bytes, max)?;
         let stem = name.rsplit_once('.').map_or(name.as_str(), |(s, _)| s).to_string();
         (bytes, name, mime, shrunk, w, h) = (b, format!("{stem}.jpg"), "image/jpeg".into(), true, nw, nh);

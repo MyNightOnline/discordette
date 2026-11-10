@@ -1,6 +1,8 @@
 <script lang="ts">
   import { init, app, draft, editor, notify, setConfig, type Sec } from "./lib/store.svelte.ts";
   import { api, errMsg } from "./lib/api.ts";
+  import { t } from "./lib/i18n.svelte.ts";
+  import type { Key } from "./lib/i18n/index.ts";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { ask } from "@tauri-apps/plugin-dialog";
@@ -16,7 +18,7 @@
   async function autoUpdate() {
     try {
       const u = await check();
-      if (u && await ask(`มีเวอร์ชันใหม่ ${u.version}\n\n${u.body ?? ""}\n\nอัปเดตตอนนี้ไหม?`, { kind: "info" })) { await u.downloadAndInstall(); await relaunch(); }
+      if (u && await ask(t("upd.available", { version: u.version, notes: u.body ?? "" }), { kind: "info" })) { await u.downloadAndInstall(); await relaunch(); }
     } catch { /* ignore */ }
   }
   const MIN_W = 220, MAX_W = 520;
@@ -55,10 +57,10 @@
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   }
-  const SECS: { grp: string; items: [Sec, string][] }[] = [
-    { grp: "พื้นฐาน", items: [["general", "ทั่วไป"], ["discord", "Discord"], ["data", "นำเข้า / ส่งออก"]] },
-    { grp: "AI", items: [["ai", "AI provider"], ["prompt", "Prompt template"]] },
-    { grp: "ข้อมูล", items: [["about", "เกี่ยวกับ"]] },
+  const SECS: { grp: Key; items: [Sec, Key][] }[] = [
+    { grp: "nav.basic", items: [["general", "nav.general"], ["discord", "nav.discord"], ["data", "nav.data"]] },
+    { grp: "nav.ai", items: [["ai", "nav.provider"], ["prompt", "nav.prompt"]] },
+    { grp: "nav.info", items: [["about", "nav.about"]] },
   ];
 </script>
 
@@ -68,17 +70,17 @@
     {#if app.view === "settings"}
       <button class="item back" onclick={() => (app.view = "compose")}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 6-6 6 6 6" /></svg>
-        กลับไปโพสต์
+        {t("nav.back")}
       </button>
       {#each SECS as g}
-        <div class="grp">{g.grp}</div>
+        <div class="grp">{t(g.grp)}</div>
         {#each g.items as [id, label]}
-          <button class="item" class:on={app.sec === id} aria-current={app.sec === id} onclick={() => (app.sec = id)}>{label}</button>
+          <button class="item" class:on={app.sec === id} aria-current={app.sec === id} onclick={() => (app.sec = id)}>{t(label)}</button>
         {/each}
       {/each}
     {:else}
-    <div class="grph"><span>เขียนโพสต์ลงห้อง</span>
-      <button class="gear plus" aria-label="เพิ่มห้องใหม่" title="เพิ่มห้องใหม่" onclick={() => { editor.room = undefined; editor.open = true; }}>
+    <div class="grph"><span>{t("nav.compose")}</span>
+      <button class="gear plus" aria-label={t("nav.addRoom")} title={t("nav.addRoom")} onclick={() => { editor.room = undefined; editor.open = true; }}>
         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>
       </button>
     </div>
@@ -93,17 +95,17 @@
           {/if}
           <span class="nm" title={r.name}>{r.name}</span>
         </button>
-        <button class="gear" aria-label="ตั้งค่าห้อง {r.name}" onclick={() => { editor.room = r; editor.open = true; }}>
+        <button class="gear" aria-label={t("nav.roomSettings", { name: r.name })} onclick={() => { editor.room = r; editor.open = true; }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
         </button>
       </div>
     {/each}
     <button class="item settings" onclick={() => (app.view = "settings")}>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>
-      ตั้งค่า
+      {t("nav.settings")}
     </button>
     {/if}
-    <div class="grip" role="separator" aria-orientation="vertical" aria-label="ปรับความกว้างแถบข้าง" onpointerdown={drag}></div>
+    <div class="grip" role="separator" aria-orientation="vertical" aria-label={t("nav.resize")} onpointerdown={drag}></div>
   </nav>
   <div class="right">
     <TitleBar />

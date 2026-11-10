@@ -1,13 +1,14 @@
 <script lang="ts">
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { app } from "../lib/store.svelte.ts";
+  import { t } from "../lib/i18n.svelte.ts";
 </script>
 
 {#if app.toast}
   <div class="toast" class:err={app.toast.err} role="status">
     <span class="dot" aria-hidden="true"></span><span>{app.toast.msg}</span>
-    {#if app.toast.link}<button class="primary" onclick={() => openUrl(app.toast!.link!)}>เปิดใน Discord</button>{/if}
-    <button class="ghost" aria-label="ปิด" onclick={() => (app.toast = null)}>✕</button>
+    {#if app.toast.link}<button class="primary" onclick={() => openUrl(app.toast!.link!)}>{t("toast.open")}</button>{/if}
+    <button class="ghost" aria-label={t("toast.close")} onclick={() => (app.toast = null)}>✕</button>
   </div>
 {/if}
 
