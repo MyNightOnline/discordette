@@ -87,6 +87,8 @@ export function problems(): { field: string; msg: string }[] {
   }
   const failed = draft.slots.flatMap((s, i) => (s.error ? [i + 1] : []));
   if (failed.length) p.push({ field: "images", msg: t("prob.imgFailed", { list: failed.join(", ") }) });
+  const loading = draft.slots.filter((s) => !s.img && !s.error).length;
+  if (loading) p.push({ field: "images", msg: t("prob.imgLoading", { n: loading }) });
   return p;
 }
 
