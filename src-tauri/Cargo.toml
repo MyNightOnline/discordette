@@ -1,6 +1,6 @@
 [package]
 name = "discordette"
-version = "0.2.1"
+version = "0.2.2"
 description = "A desktop assistant for managing Discord"
 authors = ["MyNightOnline"]
 edition = "2024"
